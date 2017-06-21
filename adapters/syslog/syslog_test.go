@@ -102,6 +102,23 @@ func TestSyslogReconnectOnClose(t *testing.T) {
 	}
 }
 
+func TestJoinNonEmptyStrings(t *testing.T) {
+	example1 := []string{"foo", "bar", "baz"}
+	testEquals(t, "foo, bar, baz", joinNonEmptyStrings(example1, ", "))
+
+	example2 := []string{"foo", "", "baz"}
+	testEquals(t, "foo, baz", joinNonEmptyStrings(example2, ", "))
+
+	example3 := []string{"", "", ""}
+	testEquals(t, "", joinNonEmptyStrings(example3, ", "))
+
+	example4 := []string{"", "foo", "bar"}
+	testEquals(t, "foo, bar", joinNonEmptyStrings(example4, ", "))
+
+	example5 := []string{"foo", "bar", ""}
+	testEquals(t, "foo, bar", joinNonEmptyStrings(example5, ", "))
+}
+
 func startServer(n, la string, done chan<- string) (addr string, sock io.Closer, wg *sync.WaitGroup) {
 	if n == "udp" || n == "tcp" {
 		la = "127.0.0.1:0"
@@ -171,5 +188,11 @@ func sendLogstream(stream chan *router.Message, messages chan string, adapter ro
 func check(t *testing.T, tmpl *template.Template, in string, out string) {
 	if in != out {
 		t.Errorf("expected: %s\ngot: %s\n", in, out)
+	}
+}
+
+func testEquals(t *testing.T, expected string, value string) {
+	if expected != value {
+		t.Errorf("expected [%s] but got [%s]\n", expected, value)
 	}
 }

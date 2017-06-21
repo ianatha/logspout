@@ -54,6 +54,35 @@ func debug(v ...interface{}) {
 	}
 }
 
+func joinNonEmptyStrings(a []string, sep string) string {
+	switch len(a) {
+	case 0:
+		return ""
+	case 1:
+		return a[0]
+	}
+	n := len(sep) * (len(a) - 1)
+	for i := 0; i < len(a); i++ {
+		if (len(a[i]) == 0 && n > 0) {
+			n -= len(sep)
+		} else {
+			n += len(a[i])
+		}
+	}
+
+	b := make([]byte, n)
+	bp := copy(b, a[0])
+	for _, s := range a[1:] {
+		if (len(s) > 0) {
+			if (bp != 0) {
+				bp += copy(b[bp:], sep)
+			}
+			bp += copy(b[bp:], s)
+		}
+	}
+	return string(b)
+}
+
 // NewSyslogAdapter returnas a configured syslog.Adapter
 func NewSyslogAdapter(route *router.Route) (router.LogAdapter, error) {
 	transport, found := router.AdapterTransports.Lookup(route.AdapterTransport("udp"))
@@ -67,16 +96,14 @@ func NewSyslogAdapter(route *router.Route) (router.LogAdapter, error) {
 
 	format := getopt("SYSLOG_FORMAT", "rfc5424")
 	priority := getopt("SYSLOG_PRIORITY", "{{.Priority}}")
-	hostname := getopt("SYSLOG_HOSTNAME", "{{.Container.Config.Hostname}}")
+	hostname := getopt("SYSLOG_HOSTNAME", "{{.ContainerHostname}}")
 	pid := getopt("SYSLOG_PID", "{{.Container.State.Pid}}")
 	tag := getopt("SYSLOG_TAG", "{{.ContainerName}}"+route.Options["append_tag"])
-	structuredData := getopt("SYSLOG_STRUCTURED_DATA", "")
-	if route.Options["structured_data"] != "" {
-		structuredData = route.Options["structured_data"]
-	}
 	data := getopt("SYSLOG_DATA", "{{.Data}}")
 	timestamp := getopt("SYSLOG_TIMESTAMP", "{{.Timestamp}}")
 
+	structuredDataCandidates := []string{getopt("SYSLOG_STRUCTURED_DATA", ""), route.Options["structured_data"]}
+	structuredData := joinNonEmptyStrings(structuredDataCandidates, " ")
 	if structuredData == "" {
 		structuredData = "-"
 	} else {
@@ -249,7 +276,24 @@ func (m *Message) Timestamp() string {
 	return m.Message.Time.Format(time.RFC3339)
 }
 
-// ContainerName returns the message's container name
+// Hostname returns the message's container name or task id
+func (m *Message) ContainerHostname() string {
+	useSwarmServiceName := getopt("DOCKER_SWARM_AWARE", "true")
+	if (useSwarmServiceName == "true") {
+		return m.Message.Container.Name[1:]
+	}
+
+	return m.Message.Container.Config.Hostname
+}
+
+// ContainerName returns the message's container name or service name
 func (m *Message) ContainerName() string {
+	useSwarmServiceName := getopt("DOCKER_SWARM_AWARE", "true")
+	if (useSwarmServiceName == "true") {
+		if swarmServiceName, ok := m.Message.Container.Config.Labels["com.docker.swarm.service.name"]; ok {
+			return swarmServiceName
+		}
+	}
+
 	return m.Message.Container.Name[1:]
 }
